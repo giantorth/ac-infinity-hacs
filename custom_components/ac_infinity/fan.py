@@ -108,9 +108,6 @@ class ACInfinityFan(
     async def async_turn_off(self, **kwargs: Any) -> None:
         """Turn off the fan."""
         await self._device.turn_off()
-        self._attr_percentage = 0
-        self._attr_is_on = False
-        self.async_write_ha_state()
 
     async def set_device_work_type(self, type):
         """Handle service request to change work type."""
