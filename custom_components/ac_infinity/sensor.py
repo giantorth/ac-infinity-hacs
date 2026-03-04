@@ -1,5 +1,8 @@
 """The ac_infinity sensor platform."""
 from __future__ import annotations
+
+import logging
+from abc import abstractmethod
 from typing import Any
 
 from ac_infinity_ble import ACInfinityController
@@ -20,9 +23,11 @@ from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers.entity import DeviceInfo
 from homeassistant.helpers.entity import EntityCategory
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
-from .const import DEVICE_MODEL, DOMAIN
+from .const import DEVICE_MODEL, DOMAIN, WORK_TYPE_FROM_RAW
 from .coordinator import ACInfinityDataUpdateCoordinator
 from .models import ACInfinityData
+
+_LOGGER = logging.getLogger(__name__)
 
 
 async def async_setup_entry(
@@ -30,19 +35,26 @@ async def async_setup_entry(
     entry: ConfigEntry,
     async_add_entities: AddEntitiesCallback,
 ) -> None:
-    """Set up the light platform for LEDBLE."""
+    """Set up the sensor platform for AC Infinity."""
     data: ACInfinityData = hass.data[DOMAIN][entry.entry_id]
-    entities = []
-    if data.device.state.type in [1, 6, 7, 11]:
+    entities: list[ACInfinitySensor] = []
+
+    if data.device.state is None:
+        _LOGGER.warning("Device state not available, skipping sensor setup")
+        return
+
+    device_type = data.device.state.type
+
+    if device_type in [1, 6, 7, 11]:
         entities.append(TemperatureSensor(data.coordinator, data.device, entry.title))
 
-    if data.device.state.type in [1, 7, 11]:
+    if device_type in [1, 7, 11]:
         entities.append(HumiditySensor(data.coordinator, data.device, entry.title))
 
-    if data.device.state.version >= 3 and data.device.state.type in [7, 9, 11, 12]:
+    if data.device.state.version >= 3 and device_type in [7, 9, 11, 12]:
         entities.append(VpdSensor(data.coordinator, data.device, entry.title))
 
-    if data.device.state.type in [6]:
+    if device_type in [6]:
         entities.append(
             TemperatureTriggerLowSensor(data.coordinator, data.device, entry.title)
         )
@@ -71,7 +83,7 @@ class ACInfinitySensor(
         self._name = name
         self._attr_device_info = DeviceInfo(
             name=device.name,
-            model=DEVICE_MODEL[device.state.type],
+            model=DEVICE_MODEL.get(device.state.type, f"Unknown ({device.state.type})"),
             manufacturer="AC Infinity",
             sw_version=device.state.version,
             connections={(dr.CONNECTION_BLUETOOTH, device.address)},
@@ -79,9 +91,9 @@ class ACInfinitySensor(
         self._async_update_attrs()
 
     @callback
+    @abstractmethod
     def _async_update_attrs(self) -> None:
         """Handle updating _attr values."""
-        raise NotImplementedError("Not yet implemented.")
 
     @callback
     def _handle_coordinator_update(self, *args: Any) -> None:
@@ -139,9 +151,9 @@ class TemperatureTriggerLowSensor(ACInfinitySensor):
 
 
 class TemperatureTriggerHighSensor(ACInfinitySensor):
-    _attr_native_unit_of_measurement = (
-        UnitOfTemperature.FAHRENHEIT
-    )  # FOr some reason this one is in F instead of C?
+    # NOTE: The AIRTAP T6 reports this value in Fahrenheit, unlike other temperature
+    # readings which are in Celsius. This appears to be a firmware quirk.
+    _attr_native_unit_of_measurement = UnitOfTemperature.FAHRENHEIT
     _attr_device_class = SensorDeviceClass.TEMPERATURE
     _attr_state_class = SensorStateClass.MEASUREMENT
     _attr_entity_category = EntityCategory.DIAGNOSTIC
@@ -162,7 +174,6 @@ class TemperatureTriggerHighSensor(ACInfinitySensor):
 
 
 class HumiditySensor(ACInfinitySensor):
-    _attr_name = "Humidity"
     _attr_native_unit_of_measurement = PERCENTAGE
     _attr_device_class = SensorDeviceClass.HUMIDITY
     _attr_state_class = SensorStateClass.MEASUREMENT
@@ -198,21 +209,9 @@ class WorkTypeSensor(ACInfinitySensor):
     @callback
     def _async_update_attrs(self) -> None:
         """Handle updating _attr values."""
-        self._attr_native_value = self._translate_state(self._device.state.work_type)
-
-    def _translate_state(self, raw_state):
-        if raw_state == 6:
-            return "Cycle"
-        if raw_state == 4:
-            return "Timer"
-        if raw_state == 3:
-            return "Auto"
-        if raw_state == 2:
-            return "On"
-        if raw_state == 1:
-            return "Off"
-
-        return "Unknown"
+        self._attr_native_value = WORK_TYPE_FROM_RAW.get(
+            self._device.state.work_type, "Unknown"
+        )
 
 
 class VpdSensor(ACInfinitySensor):

@@ -66,8 +66,8 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 await controller.update()
             except BLEAK_EXCEPTIONS:
                 errors["base"] = "cannot_connect"
-            except Exception:  # pylint: disable=broad-except
-                _LOGGER.exception("Unexpected error")
+            except Exception:
+                _LOGGER.exception("Unexpected error during device connection")
                 errors["base"] = "unknown"
             else:
                 await controller.stop()

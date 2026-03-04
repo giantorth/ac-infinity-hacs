@@ -35,7 +35,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         )
 
     device_info: DeviceInfo | dict = entry.data[CONF_SERVICE_DATA]
-    if type(device_info) is dict:
+    if isinstance(device_info, dict):
         device_info = DeviceInfo(**entry.data[CONF_SERVICE_DATA])
     controller = ACInfinityController(ble_device, device_info)
     coordinator = ACInfinityDataUpdateCoordinator(hass, _LOGGER, ble_device, controller)

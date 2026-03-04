@@ -27,7 +27,7 @@ from homeassistant.util.percentage import (
 import voluptuous as vol
 from homeassistant.helpers import config_validation as cv
 
-from .const import DEVICE_MODEL, DOMAIN
+from .const import DEVICE_MODEL, DOMAIN, WORK_TYPE_TO_RAW
 from .coordinator import ACInfinityDataUpdateCoordinator
 from .models import ACInfinityData
 
@@ -78,7 +78,7 @@ class ACInfinityFan(
         self._attr_unique_id = f"{self._device.address}_fan"
         self._attr_device_info = DeviceInfo(
             name=device.name,
-            model=DEVICE_MODEL[device.state.type],
+            model=DEVICE_MODEL.get(device.state.type, f"Unknown ({device.state.type})"),
             manufacturer="AC Infinity",
             sw_version=device.state.version,
             connections={(dr.CONNECTION_BLUETOOTH, device.address)},
@@ -109,23 +109,13 @@ class ACInfinityFan(
         """Turn off the fan."""
         await self._device.turn_off()
 
-    async def set_device_work_type(self, type):
+    async def set_device_work_type(self, type: str) -> None:  # noqa: A002
         """Handle service request to change work type."""
-        work_type = type
-        _LOGGER.debug("Service request to set work type to %s", work_type)
-
-        # Translate the mode to the raw value
-        if work_type == "CYCLE":
-            raw_mode = 6
-        elif work_type == "TIMER":
-            raw_mode = 4
-        elif work_type == "AUTO":
-            raw_mode = 3
-        elif work_type == "ON":
-            raw_mode = 2
-        elif work_type == "OFF":
-            raw_mode = 1
-
+        _LOGGER.debug("Service request to set work type to %s", type)
+        raw_mode = WORK_TYPE_TO_RAW.get(type)
+        if raw_mode is None:
+            _LOGGER.error("Unknown work type: %s", type)
+            return
         _LOGGER.debug("Work type set to %s", raw_mode)
         await self._device.set_type(raw_mode)
 
